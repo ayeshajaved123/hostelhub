@@ -56,7 +56,30 @@ export function AuthProvider({ children }) {
     localStorage.removeItem("hg_user");
   };
 
-  return <AuthCtx.Provider value={{ user, loginDemo, login, logout, isDemo: !isConfigured }}>{children}</AuthCtx.Provider>;
+  // Warden creates a staff login (guard/warden). Uses a secondary Firebase app
+  // instance so the warden stays signed in on the primary app.
+  const createStaffUser = async (name, email, password, role) => {
+    if (!isConfigured) {
+      const { store } = await import("../data/store.js");
+      return store.saveUser({ name, email, role });
+    }
+    const { initializeApp, deleteApp } = await import("firebase/app");
+    const { getAuth, createUserWithEmailAndPassword, signOut } = await import("firebase/auth");
+    const { doc, setDoc } = await import("firebase/firestore");
+    const { firebaseConfig, db } = await import("../firebase.js");
+    const secondary = initializeApp(firebaseConfig, "staff-creator-" + Date.now());
+    try {
+      const sAuth = getAuth(secondary);
+      const cred = await createUserWithEmailAndPassword(sAuth, email, password);
+      await signOut(sAuth);
+      await setDoc(doc(db, "users", cred.user.uid), { email, role, name });
+      return { id: cred.user.uid, name, email, role };
+    } finally {
+      await deleteApp(secondary);
+    }
+  };
+
+  return <AuthCtx.Provider value={{ user, loginDemo, login, logout, createStaffUser, isDemo: !isConfigured }}>{children}</AuthCtx.Provider>;
 }
 
 export const useAuth = () => useContext(AuthCtx);

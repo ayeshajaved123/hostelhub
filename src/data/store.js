@@ -90,6 +90,13 @@ const local = {
     saveLocal(d);
   },
   async getUsers() { return loadLocal().users; },
+  async saveUser(u) {
+    const d = loadLocal();
+    const i = d.users.findIndex((x) => x.email === u.email);
+    if (i > -1) d.users[i] = { ...d.users[i], ...u };
+    else { u.id = u.id || uid("u"); d.users.push(u); }
+    saveLocal(d); return u;
+  },
   async resetDemo() { localStorage.removeItem(LS_KEY); }
 };
 
@@ -183,6 +190,11 @@ const fire = {
     await m.setDoc(m.doc(db, "alerts", id), { acknowledged: true }, { merge: true });
   },
   async getUsers() { return this._all("users"); },
+  async saveUser(u) {
+    const m = await fmod();
+    await m.setDoc(m.doc(db, "users", u.id), { email: u.email, role: u.role, name: u.name });
+    return u;
+  },
   async resetDemo() {}
 };
 
