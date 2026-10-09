@@ -1,0 +1,51 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function userRole() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    }
+    function isWarden() { return signedIn() && userRole() == 'warden'; }
+    function isStaff() { return signedIn() && userRole() in ['warden', 'guard', 'cr']; }
+
+    // Users collection: readable by signed-in users, writable by warden only.
+    // Bootstrap: the first user document must be created manually in the console.
+    match /users/{uid} {
+      allow read: if signedIn();
+      allow write: if isWarden();
+    }
+
+    // Students: warden manages; CR/guard read; students read own record.
+    match /students/{id} {
+      allow read: if isStaff() || (signedIn() && resource.data.id == request.auth.uid);
+      allow write: if isWarden();
+    }
+
+    // Permission slips: students create own; warden/CR decide.
+    match /permissions/{id} {
+      allow read: if isStaff() || signedIn();
+      allow create: if signedIn();
+      allow update: if isWarden() || userRole() == 'cr';
+      allow delete: if isWarden();
+    }
+
+    // Gate log: guard and warden write; staff read.
+    match /gateLog/{id} {
+      allow read: if isStaff();
+      allow write: if signedIn() && userRole() in ['warden', 'guard'];
+    }
+
+    // Attendance: warden and CR write; staff read.
+    match /attendance/{id} {
+      allow read: if isStaff();
+      allow write: if isWarden() || userRole() == 'cr';
+    }
+
+    // Alerts/inbox: warden reads; system writes via warden/CR actions.
+    match /alerts/{id} {
+      allow read: if isWarden();
+      allow write: if isWarden() || userRole() == 'cr';
+    }
+  }
+}
